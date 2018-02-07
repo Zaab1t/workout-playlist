@@ -17,6 +17,7 @@ import code
 import contextlib
 import fcntl
 import os
+import runpy
 import select
 import sys
 import termios
@@ -32,17 +33,6 @@ import pyinotify as inotify
 
 class ModuleModifiedError(Exception):
     pass
-
-
-def runfile(filename):
-    """Run *filename* and return context.
-
-    :rtype: dict.
-    """
-    context = {}
-    with open(filename, 'r') as f:
-        eval(compile(f.read(), filename, 'exec'), context)
-    return context
 
 
 def clear_events(inotify_fd):
@@ -73,24 +63,21 @@ class LiveReloadInterpreter(code.InteractiveConsole):
 
             if self.read_fd in rlist:
                 try:
-                    return input(prompt)
-                except (EOFError, KeyboardInterrupt):
+                    return input()
+                except EOFError:
                     # XXX: Do we need to do something here?
                     sys.exit(0)
 
             if self.inotify_fd in rlist:
                 clear_events(self.inotify_fd)
                 raise ModuleModifiedError
-    
-    # def interact(self):
-    #     ...
 
 
 def get_console(module_name, inotify_fd, stream):
     """Execute module and return `LiveReloadInterpreter` with locals."""
-    context = runfile(module_name)
+    # TODO: How can we make the script believe it's __main__?
+    context = runpy.run_path(module_name)
     console = LiveReloadInterpreter(context, inotify_fd, filename=module_name)
-    # console.write = stream
     return console
 
 
@@ -110,6 +97,7 @@ def interact(module_name, *, stream=None, banner=None, exitmsg=None):
     """Primary function for this module."""
     if stream is None:
         stream = sys.stdout
+
     if banner is None:
         stream.write('Python %s on %s\n' % (sys.version, sys.platform))
 
@@ -118,13 +106,12 @@ def interact(module_name, *, stream=None, banner=None, exitmsg=None):
 
         while "my guitar gently weeps":
             try:
-                console.interact()
+                console.interact(banner="")
             except ModuleModifiedError:
                 print()
                 print("Reloading...")
-                # TODO: Clear stdin here. If you had something typed the moment
-                # it reloaded it's still in stdin even though it's moved up the
-                # screen.
+                # TODO: We need to remove what's being written from stdin as
+                # not to confuse our user.
                 console = get_console(module_name, inotify_fd, stream=stream)
 
     if exitmsg is None:
