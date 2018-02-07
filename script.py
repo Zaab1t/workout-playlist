@@ -49,6 +49,15 @@ def clear_events(inotify_fd):
     return b
 
 
+def print_info(msg):
+    # XXX: Do we need want for this? Do we even want colors?
+    print("\033[32m[{}]\033[0m".format(msg))
+
+
+def print_error(msg):
+    print("\033[31m[{}]\033[0m".format(msg))
+
+
 class LiveReloadInterpreter(code.InteractiveConsole):
     def __init__(self, locals, inotify_fd, filename='<console>', read_fd=None):
         super().__init__(locals=locals, filename=filename)
@@ -76,7 +85,13 @@ class LiveReloadInterpreter(code.InteractiveConsole):
 def get_console(module_name, inotify_fd, stream):
     """Execute module and return `LiveReloadInterpreter` with locals."""
     # TODO: How can we make the script believe it's __main__?
-    context = runpy.run_path(module_name)
+
+    try:
+        context = runpy.run_path(module_name)
+    except Exception as e:
+        print_error("{!r} failed with: {}".format(module_name, e))
+        sys.exit(1)
+
     console = LiveReloadInterpreter(context, inotify_fd, filename=module_name)
     return console
 
@@ -109,7 +124,7 @@ def interact(module_name, *, stream=None, banner=None, exitmsg=None):
                 console.interact(banner="")
             except ModuleModifiedError:
                 print()
-                print("Reloading...")
+                print_info("Reloading...")
                 # TODO: We need to remove what's being written from stdin as
                 # not to confuse our user.
                 console = get_console(module_name, inotify_fd, stream=stream)
