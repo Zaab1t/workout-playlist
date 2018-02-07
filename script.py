@@ -67,11 +67,16 @@ class LiveReloadInterpreter(code.InteractiveConsole):
 
     def raw_input(self, prompt):
         while True:
-            rlist, [], [] = select.select([self.inotify_fd, self.read_fd], [], [])
-            print(rlist)
+            print(prompt, end="", flush=True)
+            rlist, [], [] = \
+                select.select([self.inotify_fd, self.read_fd], [], [])
 
             if self.read_fd in rlist:
-                return input(prompt)
+                try:
+                    return input(prompt)
+                except (EOFError, KeyboardInterrupt):
+                    # XXX: Do we need to do something here?
+                    sys.exit(0)
 
             if self.inotify_fd in rlist:
                 clear_events(self.inotify_fd)
@@ -90,12 +95,15 @@ def get_console(module_name, inotify_fd, stream):
 
 
 @contextlib.contextmanager
-def snakebelt():
+def open_watcher(module_name):
     wm = inotify.WatchManager()
     # if we want more inotify events OR (|) them together.
     wm.add_watch(module_name, inotify.IN_MODIFY)
-    yield wm.get_fd()
-    wm.close()
+
+    try:
+        yield wm.get_fd()
+    finally:
+        wm.close()
 
 
 def interact(module_name, *, stream=None, banner=None, exitmsg=None):
@@ -105,12 +113,18 @@ def interact(module_name, *, stream=None, banner=None, exitmsg=None):
     if banner is None:
         stream.write('Python %s on %s\n' % (sys.version, sys.platform))
 
-    with snakebelt() as inotify_fd:
+    with open_watcher(module_name) as inotify_fd:
         console = get_console(module_name, inotify_fd, stream=stream)
+
         while "my guitar gently weeps":
             try:
                 console.interact()
             except ModuleModifiedError:
+                print()
+                print("Reloading...")
+                # TODO: Clear stdin here. If you had something typed the moment
+                # it reloaded it's still in stdin even though it's moved up the
+                # screen.
                 console = get_console(module_name, inotify_fd, stream=stream)
 
     if exitmsg is None:
