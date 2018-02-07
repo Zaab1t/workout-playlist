@@ -48,13 +48,12 @@ def clear_events(inotify_fd):
     return b
 
 
-def print_info(msg):
-    # XXX: Do we need want for this? Do we even want colors?
-    print('\033[32m[%s]\033[0m' % msg)
+def print_info(stream, msg):
+    stream.write('\033[32m[%s]\033[0m' % msg)
 
 
-def print_error(msg):
-    print('\033[31m[%s]\033[0m' % msg)
+def print_error(stream, msg):
+    stream.write('\033[31m[%s]\033[0m' % msg)
 
 
 class LiveReloadInterpreter(code.InteractiveConsole):
@@ -73,7 +72,7 @@ class LiveReloadInterpreter(code.InteractiveConsole):
                 try:
                     return input()
                 except EOFError:
-                    # XXX: Do we need to do something here?
+                    # XXX: Do we need to clean up here?
                     sys.exit(0)
 
             if self.inotify_fd in rlist:
@@ -84,14 +83,15 @@ class LiveReloadInterpreter(code.InteractiveConsole):
 def get_console(module_name, inotify_fd, stream):
     """Execute module and return `LiveReloadInterpreter` with locals."""
     # TODO: How can we make the script believe it's __main__?
-
     try:
         context = runpy.run_path(module_name)
     except BaseException as e:
-        print_error('%r failed with %r' % (module_name, e))
+        print_error(stream, '%r failed with %r' % (module_name, e))
         sys.exit(1)
 
+    # print exit code from running context if not 0?
     console = LiveReloadInterpreter(context, inotify_fd, filename=module_name)
+    # console.write = stream
     return console
 
 
@@ -100,7 +100,6 @@ def open_watcher(module_name):
     wm = inotify.WatchManager()
     # if we want more inotify events OR (|) them together.
     wm.add_watch(module_name, inotify.IN_MODIFY)
-
     try:
         yield wm.get_fd()
     finally:
@@ -122,8 +121,8 @@ def interact(module_name, *, stream=None, banner=None, exitmsg=None):
             try:
                 console.interact(banner='')
             except ModuleModifiedError:
-                print()
-                print_info('Reloading...')
+                stream.write('\n')
+                print_info(stream, 'Reloading...')
                 # TODO: We need to remove what's being written from stdin as
                 # not to confuse our user.
                 console = get_console(module_name, inotify_fd, stream=stream)
@@ -135,7 +134,6 @@ def interact(module_name, *, stream=None, banner=None, exitmsg=None):
 
 
 def main():
-    # XXX: Is click a good idea?
     argp = argparse.ArgumentParser('workout-playlist')
     argp.add_argument('module_path',
                       help='The module to watch.')
