@@ -9,10 +9,11 @@
 """
 
 
-__version__ = '0.1.0'
+__version__ = '0.2.0'
 __all__ = ['interact']
 
 
+import argparse
 import code
 import contextlib
 import fcntl
@@ -26,9 +27,7 @@ import pyinotify as inotify
 
 
 # TODO
-#   print exit code after execution
 #   support directories
-#   cli
 
 
 class ModuleModifiedError(Exception):
@@ -51,11 +50,11 @@ def clear_events(inotify_fd):
 
 def print_info(msg):
     # XXX: Do we need want for this? Do we even want colors?
-    print("\033[32m[{}]\033[0m".format(msg))
+    print('\033[32m[%s]\033[0m' % msg)
 
 
 def print_error(msg):
-    print("\033[31m[{}]\033[0m".format(msg))
+    print('\033[31m[%s]\033[0m' % msg)
 
 
 class LiveReloadInterpreter(code.InteractiveConsole):
@@ -66,7 +65,7 @@ class LiveReloadInterpreter(code.InteractiveConsole):
 
     def raw_input(self, prompt):
         while True:
-            print(prompt, end="", flush=True)
+            print(prompt, end='', flush=True)
             rlist, [], [] = \
                 select.select([self.inotify_fd, self.read_fd], [], [])
 
@@ -88,8 +87,8 @@ def get_console(module_name, inotify_fd, stream):
 
     try:
         context = runpy.run_path(module_name)
-    except Exception as e:
-        print_error("{!r} failed with: {}".format(module_name, e))
+    except BaseException as e:
+        print_error('%r failed with %r' % (module_name, e))
         sys.exit(1)
 
     console = LiveReloadInterpreter(context, inotify_fd, filename=module_name)
@@ -121,10 +120,10 @@ def interact(module_name, *, stream=None, banner=None, exitmsg=None):
 
         while "my guitar gently weeps":
             try:
-                console.interact(banner="")
+                console.interact(banner='')
             except ModuleModifiedError:
                 print()
-                print_info("Reloading...")
+                print_info('Reloading...')
                 # TODO: We need to remove what's being written from stdin as
                 # not to confuse our user.
                 console = get_console(module_name, inotify_fd, stream=stream)
@@ -135,5 +134,14 @@ def interact(module_name, *, stream=None, banner=None, exitmsg=None):
         stream.write('%s\n' % exitmsg)
 
 
+def main():
+    # XXX: Is click a good idea?
+    argp = argparse.ArgumentParser('workout-playlist')
+    argp.add_argument('module_path',
+                      help='The module to watch.')
+    argv = argp.parse_args()
+    interact(argv.module_path)
+
+
 if __name__ == '__main__':
-    interact(sys.argv[1])
+    main()
