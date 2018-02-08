@@ -45,10 +45,12 @@ def clear_events(inotify_fd):
 
 
 def print_info(stream, msg):
+    """Print in green."""
     stream.write('\033[32m[%s]\033[0m\n' % msg)
 
 
 def print_error(stream, msg):
+    """Print in red."""
     stream.write('\033[31m[%s]\033[0m\n' % msg)
 
 
@@ -93,6 +95,7 @@ def get_console(module_name, inotify_fd, stream):
 
 @contextlib.contextmanager
 def open_watcher(module_name):
+    """Return fd with `inotify.IN_MODIFY` watch on *module_name*."""
     wm = inotify.WatchManager()
     # if we want more inotify events OR (|) them together.
     wm.add_watch(module_name, inotify.IN_MODIFY)
