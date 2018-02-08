@@ -49,11 +49,11 @@ def clear_events(inotify_fd):
 
 
 def print_info(stream, msg):
-    stream.write('\033[32m[%s]\033[0m' % msg)
+    stream.write('\033[32m[%s]\033[0m\n' % msg)
 
 
 def print_error(stream, msg):
-    stream.write('\033[31m[%s]\033[0m' % msg)
+    stream.write('\033[31m[%s]\033[0m\n' % msg)
 
 
 class LiveReloadInterpreter(code.InteractiveConsole):
