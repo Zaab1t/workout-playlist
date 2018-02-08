@@ -26,10 +26,6 @@ import termios
 import pyinotify as inotify
 
 
-# TODO
-#   support directories
-
-
 class ModuleModifiedError(Exception):
     pass
 
