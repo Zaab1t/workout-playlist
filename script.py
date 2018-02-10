@@ -36,6 +36,7 @@ import runpy
 import select
 import sys
 import termios
+import traceback
 
 import pyinotify as inotify
 
@@ -127,7 +128,7 @@ def get_console(module_name, inotify_fd, stream):
         msg = '%r exited with code %s' % (module_name, e.args[0])
         print_error(stream, msg)
     except BaseException as e:
-        print_error(stream, '%r failed with %r' % (module_name, e))
+        traceback.print_exc(file=stream, limit=-1)
 
     console = LiveReloadInterpreter(
         context, module_name, inotify_fd, sys.stdin.fileno())
