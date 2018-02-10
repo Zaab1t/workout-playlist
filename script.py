@@ -1,16 +1,30 @@
 """
     module name
-    ~~~~~~~~
+    ~~~~~~~~~~~
 
     Live reload your beautiful code.
 
-    :author: Carl Bordum Hansen.
-    :license: MIT, see LICENSE for details.
+    module_name provides the building blocks for integrating live
+    reloading into your program, but can also be used as a stand-
+    alone executable.
+
+    On its own, it is the equivalent of running
+    `python -i [-m] program`, where it automatically reruns when
+    you save a file in your program.
 """
 
 
+__all__ = [
+    'ModuleModifiedError',
+    'open_watcher',
+    'watcher_read',
+    'LiveReloadInterpreter',
+    'get_console',
+    'interact',
+]
 __version__ = '0.2.0'
-__all__ = ['interact']
+__author__ = 'Carl Bordum Hansen'
+__license__ = 'MIT'
 
 
 import argparse
@@ -26,24 +40,6 @@ import termios
 import pyinotify as inotify
 
 
-class ModuleModifiedError(Exception):
-    pass
-
-
-def clear_events(inotify_fd):
-    # only reads, no processing
-
-    can_read_buf = bytearray([0])
-    rv = fcntl.ioctl(inotify_fd, termios.FIONREAD, can_read_buf)
-
-    if rv == -1:
-        return
-
-    can_read = can_read_buf[0]
-    b = os.read(inotify_fd, can_read)
-    return b
-
-
 def print_info(stream, msg):
     """Print in green."""
     stream.write('\033[32m[%s]\033[0m\n' % msg)
@@ -54,43 +50,8 @@ def print_error(stream, msg):
     stream.write('\033[31m[%s]\033[0m\n' % msg)
 
 
-class LiveReloadInterpreter(code.InteractiveConsole):
-    def __init__(self, locals, inotify_fd, filename='<console>', read_fd=None):
-        super().__init__(locals=locals, filename=filename)
-        self.read_fd = read_fd or sys.stdin.fileno()
-        self.inotify_fd = inotify_fd
-
-    def raw_input(self, prompt):
-        while True:
-            print(prompt, end='', flush=True)
-            rlist, [], [] = \
-                select.select([self.inotify_fd, self.read_fd], [], [])
-
-            if self.read_fd in rlist:
-                try:
-                    return input()
-                except EOFError:
-                    # XXX: Do we need to clean up here?
-                    sys.exit(0)
-
-            if self.inotify_fd in rlist:
-                clear_events(self.inotify_fd)
-                raise ModuleModifiedError
-
-
-def get_console(module_name, inotify_fd, stream):
-    """Execute module and return `LiveReloadInterpreter` with locals."""
-    # TODO: How can we make the script believe it's __main__?
-    try:
-        context = runpy.run_path(module_name)
-    except BaseException as e:
-        print_error(stream, '%r failed with %r' % (module_name, e))
-        sys.exit(1)
-
-    # print exit code from running context if not 0?
-    console = LiveReloadInterpreter(context, inotify_fd, filename=module_name)
-    # console.write = stream
-    return console
+class ModuleModifiedError(Exception):
+    pass
 
 
 @contextlib.contextmanager
@@ -105,8 +66,74 @@ def open_watcher(module_name):
         wm.close()
 
 
+def _clear_events(inotify_fd):
+    # only reads, no processing
+
+    can_read_buf = bytearray([0])
+    rv = fcntl.ioctl(inotify_fd, termios.FIONREAD, can_read_buf)
+
+    if rv == -1:
+        return
+
+    can_read = can_read_buf[0]
+    b = os.read(inotify_fd, can_read)
+    return b
+
+
+def watcher_read(prompt, inotify_fd, read_fd):
+    """Read a string from *read_fd*, but raise `ModuleModifiedError` if
+    *inotify_fd* has been modified.
+
+    :param prompt: is printed to stdout.
+    :param inotify_fd: get it from `open_watcher`.
+    :param read_fd: the fd to read from.
+    :raises EOFError: if the user hits EOF.
+
+    :rtype: string from stdin with trailing newline stripped.
+    """
+    while True:
+        print(prompt, end='', flush=True)
+        rlist, [], [] = select.select([inotify_fd, read_fd], [], [])
+
+        if read_fd in rlist:
+            return input()
+
+        if inotify_fd in rlist:
+            _clear_events(inotify_fd)
+            raise ModuleModifiedError
+
+
+class LiveReloadInterpreter(code.InteractiveConsole):
+    def __init__(self, context, filename, inotify_fd, read_fd):
+        super().__init__(locals=context, filename=filename)
+        self.inotify_fd = inotify_fd
+        self.read_fd = read_fd
+
+    def raw_input(self, prompt):
+        try:
+            return watcher_read(prompt, self.inotify_fd, self.read_fd)
+        except EOFError:
+            # XXX: Do we need to clean up here?
+            sys.exit(0)
+
+
+def get_console(module_name, inotify_fd, stream):
+    """Execute module and return `LiveReloadInterpreter` with locals."""
+    # TODO: How can we make the script believe it's __main__?
+    try:
+        context = runpy.run_path(module_name)
+    except BaseException as e:
+        print_error(stream, '%r failed with %r' % (module_name, e))
+        sys.exit(1)
+
+    # print exit code from running context if not 0?
+    console = LiveReloadInterpreter(context, module_name, inotify_fd,
+                                    sys.stdin.fileno())
+    # console.write = stream
+    return console
+
+
 def interact(module_name, *, stream=None, banner=None, exitmsg=None):
-    """Primary function for this module."""
     if stream is None:
         stream = sys.stdout
 
