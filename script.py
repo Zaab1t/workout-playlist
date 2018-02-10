@@ -127,7 +127,9 @@ def get_console(module_name, inotify_fd, stream):
     except SystemExit as e:
         msg = '%r exited with code %s' % (module_name, e.args[0])
         print_error(stream, msg)
-    except BaseException as e:
+    except KeyboardInterrupt:
+        print_error(stream, 'KeyboardInterrupt')
+    except Exception:
         traceback.print_exc(file=stream, limit=-1)
 
     console = LiveReloadInterpreter(
