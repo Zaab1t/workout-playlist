@@ -120,13 +120,15 @@ class LiveReloadInterpreter(code.InteractiveConsole):
 def get_console(module_name, inotify_fd, stream):
     """Execute module and return `LiveReloadInterpreter` with locals."""
     # TODO: How can we make the script believe it's __main__?
+    context = {}
     try:
         context = runpy.run_path(module_name)
+    except SystemExit as e:
+        msg = '%r exited with code %s' % (module_name, e.args[0])
+        print_error(stream, msg)
     except BaseException as e:
         print_error(stream, '%r failed with %r' % (module_name, e))
-        context = {}
 
-    # print exit code from running context if not 0?
     console = LiveReloadInterpreter(
         context, module_name, inotify_fd, sys.stdin.fileno())
     # console.write = stream
