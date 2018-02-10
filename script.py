@@ -124,11 +124,11 @@ def get_console(module_name, inotify_fd, stream):
         context = runpy.run_path(module_name)
     except BaseException as e:
         print_error(stream, '%r failed with %r' % (module_name, e))
-        sys.exit(1)
+        context = {}
 
     # print exit code from running context if not 0?
-    console = LiveReloadInterpreter(context, module_name, inotify_fd,
-                                    sys.stdin.fileno())
+    console = LiveReloadInterpreter(
+        context, module_name, inotify_fd, sys.stdin.fileno())
     # console.write = stream
     return console
 
